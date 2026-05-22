@@ -1,0 +1,1001 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>doc2md — Turn Documents into Markdown</title>
+  <meta name="description" content="Convert Word and Excel files to clean Markdown. Native macOS app with a built-in CLI. Offline, fast, and private." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #070912;
+      --surface:   #0f1221;
+      --surface2:  #161929;
+      --border:    rgba(255,255,255,0.07);
+      --accent:    #4f6bff;
+      --accent2:   #7c4dff;
+      --accent3:   #00d2ff;
+      --text:      #e8eaf6;
+      --muted:     #7b82a8;
+      --code-bg:   #0b0e1a;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Background canvas ────────────────────── */
+    .bg-canvas {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      overflow: hidden;
+    }
+    .blob {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(120px);
+      opacity: 0.15;
+      animation: blobDrift 20s ease-in-out infinite alternate;
+    }
+    .blob-1 { width: 700px; height: 700px; background: var(--accent);  top: -200px; left: -200px; animation-duration: 22s; }
+    .blob-2 { width: 500px; height: 500px; background: var(--accent2); top: 40%;   right: -150px; animation-duration: 18s; animation-delay: -7s; }
+    .blob-3 { width: 400px; height: 400px; background: var(--accent3); bottom: -100px; left: 30%; animation-duration: 25s; animation-delay: -12s; }
+
+    @keyframes blobDrift {
+      from { transform: translate(0, 0) scale(1); }
+      to   { transform: translate(60px, 40px) scale(1.08); }
+    }
+
+    .grid-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+      background-size: 60px 60px;
+      pointer-events: none;
+    }
+
+    /* ── Layout ───────────────────────────────── */
+    .wrap { max-width: 1140px; margin: 0 auto; padding: 0 2rem; }
+    section { position: relative; z-index: 1; }
+
+    /* ── Nav ──────────────────────────────────── */
+    nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+      background: rgba(7, 9, 18, 0.7);
+    }
+    .nav-inner {
+      max-width: 1140px;
+      margin: 0 auto;
+      padding: 0 2rem;
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .nav-logo {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: 1.25rem;
+      letter-spacing: -0.02em;
+      color: var(--text);
+      text-decoration: none;
+    }
+    .nav-logo span { color: var(--accent); }
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 2rem;
+      list-style: none;
+    }
+    .nav-links a {
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: var(--muted);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--text); }
+    .nav-cta {
+      background: var(--accent);
+      color: #fff !important;
+      padding: 0.45rem 1.1rem;
+      border-radius: 6px;
+      font-weight: 500 !important;
+      transition: background 0.2s, transform 0.15s !important;
+    }
+    .nav-cta:hover { background: #3d57e8 !important; transform: translateY(-1px); }
+
+    /* ── Hero ─────────────────────────────────── */
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      padding: 7rem 0 4rem;
+    }
+    .hero-content {
+      max-width: 760px;
+    }
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: rgba(79, 107, 255, 0.12);
+      border: 1px solid rgba(79, 107, 255, 0.3);
+      border-radius: 999px;
+      padding: 0.35rem 0.9rem;
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: #a0aaff;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      margin-bottom: 1.75rem;
+      animation: fadeUp 0.6s ease both;
+    }
+    .hero-badge::before {
+      content: '';
+      width: 6px; height: 6px;
+      background: var(--accent3);
+      border-radius: 50%;
+      box-shadow: 0 0 8px var(--accent3);
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+
+    h1 {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: clamp(2.8rem, 6vw, 4.5rem);
+      line-height: 1.05;
+      letter-spacing: -0.03em;
+      margin-bottom: 1.5rem;
+      animation: fadeUp 0.6s 0.1s ease both;
+    }
+    .gradient-text {
+      background: linear-gradient(135deg, var(--accent), var(--accent2), var(--accent3));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero-sub {
+      font-size: 1.15rem;
+      font-weight: 300;
+      color: var(--muted);
+      line-height: 1.7;
+      max-width: 560px;
+      margin-bottom: 2.5rem;
+      animation: fadeUp 0.6s 0.2s ease both;
+    }
+    .hero-actions {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+      animation: fadeUp 0.6s 0.3s ease both;
+    }
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: var(--accent);
+      color: #fff;
+      padding: 0.8rem 1.8rem;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 500;
+      text-decoration: none;
+      transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
+      box-shadow: 0 0 30px rgba(79, 107, 255, 0.35);
+    }
+    .btn-primary:hover { background: #3d57e8; transform: translateY(-2px); box-shadow: 0 0 40px rgba(79,107,255,0.5); }
+    .btn-ghost {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: var(--muted);
+      padding: 0.8rem 1.5rem;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 500;
+      text-decoration: none;
+      border: 1px solid var(--border);
+      transition: color 0.2s, border-color 0.2s, transform 0.15s;
+    }
+    .btn-ghost:hover { color: var(--text); border-color: rgba(255,255,255,0.2); transform: translateY(-2px); }
+
+    .hero-meta {
+      margin-top: 3.5rem;
+      display: flex;
+      gap: 2.5rem;
+      animation: fadeUp 0.6s 0.4s ease both;
+    }
+    .meta-item { display: flex; flex-direction: column; gap: 0.25rem; }
+    .meta-value {
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: 1.4rem;
+      color: var(--text);
+    }
+    .meta-label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Demo Section ─────────────────────────── */
+    .demo-section {
+      padding: 5rem 0 6rem;
+    }
+    .demo-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+      align-items: start;
+    }
+    .terminal-window {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .terminal-bar {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.75rem 1rem;
+      background: rgba(255,255,255,0.03);
+      border-bottom: 1px solid var(--border);
+    }
+    .dot { width: 10px; height: 10px; border-radius: 50%; }
+    .dot-red   { background: #ff5f57; }
+    .dot-yellow{ background: #febc2e; }
+    .dot-green { background: #28c840; }
+    .terminal-bar-title { flex: 1; text-align: center; font-size: 0.75rem; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
+    .terminal-body {
+      padding: 1.25rem 1.25rem 1.5rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      line-height: 1.8;
+      min-height: 260px;
+    }
+    .t-prompt { color: var(--accent); }
+    .t-cmd    { color: var(--text); }
+    .t-out    { color: var(--muted); }
+    .t-ok     { color: #28c840; }
+    .t-path   { color: var(--accent3); }
+    .cursor {
+      display: inline-block;
+      width: 8px; height: 1em;
+      background: var(--accent);
+      vertical-align: text-bottom;
+      animation: blink 1s step-end infinite;
+    }
+    @keyframes blink { 0%,100%{opacity:1;} 50%{opacity:0;} }
+
+    .gui-window {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .gui-bar {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.75rem 1rem;
+      background: rgba(255,255,255,0.03);
+      border-bottom: 1px solid var(--border);
+    }
+    .gui-bar-title { flex: 1; text-align: center; font-size: 0.75rem; color: var(--muted); font-family: 'DM Sans', sans-serif; }
+    .gui-body { padding: 1.25rem; }
+    .gui-drop-area {
+      border: 2px dashed rgba(79,107,255,0.3);
+      border-radius: 8px;
+      padding: 2rem 1rem;
+      text-align: center;
+      margin-bottom: 1rem;
+    }
+    .gui-drop-icon { font-size: 1.75rem; margin-bottom: 0.5rem; opacity: 0.6; }
+    .gui-drop-text { font-size: 0.8rem; color: var(--muted); line-height: 1.5; }
+    .gui-file-list { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem; }
+    .gui-file-item {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      background: var(--surface2);
+      border-radius: 6px;
+      padding: 0.5rem 0.75rem;
+      font-size: 0.78rem;
+    }
+    .gui-file-icon { font-size: 1rem; opacity: 0.8; }
+    .gui-file-name { flex: 1; color: var(--text); }
+    .gui-file-size { color: var(--muted); }
+    .gui-file-status { font-size: 0.7rem; color: #28c840; font-weight: 500; }
+    .gui-convert-btn {
+      width: 100%;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 7px;
+      padding: 0.65rem;
+      font-size: 0.85rem;
+      font-weight: 500;
+      font-family: 'DM Sans', sans-serif;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+
+    /* ── Section heading ──────────────────────── */
+    .section-label {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 0.75rem;
+    }
+    .section-title {
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: clamp(1.8rem, 3.5vw, 2.5rem);
+      letter-spacing: -0.025em;
+      line-height: 1.15;
+      margin-bottom: 1rem;
+    }
+    .section-desc {
+      font-size: 1rem;
+      font-weight: 300;
+      color: var(--muted);
+      line-height: 1.7;
+      max-width: 520px;
+    }
+    .section-head { margin-bottom: 3rem; }
+    .section-head.center { text-align: center; }
+    .section-head.center .section-desc { margin: 0 auto; }
+
+    /* ── Features ─────────────────────────────── */
+    .features-section { padding: 5rem 0 6rem; }
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1px;
+      background: var(--border);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+    }
+    .feature-card {
+      background: var(--surface);
+      padding: 2rem 1.75rem;
+      transition: background 0.2s;
+    }
+    .feature-card:hover { background: var(--surface2); }
+    .feature-icon {
+      font-size: 1.75rem;
+      margin-bottom: 1rem;
+      display: block;
+    }
+    .feature-title {
+      font-family: 'Syne', sans-serif;
+      font-weight: 600;
+      font-size: 1rem;
+      margin-bottom: 0.6rem;
+      color: var(--text);
+    }
+    .feature-desc {
+      font-size: 0.875rem;
+      line-height: 1.65;
+      color: var(--muted);
+    }
+
+    /* ── How It Works ─────────────────────────── */
+    .how-section { padding: 5rem 0 6rem; }
+    .steps-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 2rem;
+    }
+    .step-card {
+      position: relative;
+      padding: 2rem 1.5rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+    }
+    .step-num {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: 3.5rem;
+      line-height: 1;
+      color: rgba(79,107,255,0.15);
+      margin-bottom: 1rem;
+      letter-spacing: -0.03em;
+    }
+    .step-title {
+      font-family: 'Syne', sans-serif;
+      font-weight: 600;
+      font-size: 1.05rem;
+      margin-bottom: 0.6rem;
+    }
+    .step-desc { font-size: 0.875rem; color: var(--muted); line-height: 1.65; }
+    .step-connector {
+      position: absolute;
+      top: 50%;
+      right: -1.25rem;
+      transform: translateY(-50%);
+      color: var(--muted);
+      font-size: 1.2rem;
+      z-index: 2;
+    }
+
+    /* ── CLI Section ──────────────────────────── */
+    .cli-section { padding: 5rem 0 6rem; }
+    .cli-inner {
+      display: grid;
+      grid-template-columns: 1fr 1.1fr;
+      gap: 4rem;
+      align-items: center;
+    }
+    .cli-code-block {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .cli-code-bar {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.65rem 1rem;
+      background: rgba(255,255,255,0.03);
+      border-bottom: 1px solid var(--border);
+    }
+    .cli-code-lang {
+      font-size: 0.7rem;
+      color: var(--muted);
+      font-family: 'JetBrains Mono', monospace;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      margin-left: auto;
+    }
+    .cli-code-body {
+      padding: 1.5rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.82rem;
+      line-height: 2;
+      overflow-x: auto;
+    }
+    .code-comment { color: #4a5580; }
+    .code-cmd     { color: var(--accent3); }
+    .code-arg     { color: var(--text); }
+    .code-flag    { color: #c792ea; }
+    .code-path    { color: #f78c6c; }
+
+    .cli-feature-list {
+      display: flex;
+      flex-direction: column;
+      gap: 1.1rem;
+      margin-top: 2rem;
+    }
+    .cli-feature-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+    }
+    .cli-feature-check {
+      width: 20px; height: 20px;
+      background: rgba(79,107,255,0.15);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 1px;
+      font-size: 0.65rem;
+      color: var(--accent);
+    }
+    .cli-feature-text {
+      font-size: 0.9rem;
+      line-height: 1.5;
+    }
+    .cli-feature-text strong { color: var(--text); font-weight: 500; }
+    .cli-feature-text span { color: var(--muted); }
+
+    /* ── Download ─────────────────────────────── */
+    .download-section { padding: 5rem 0 7rem; }
+    .download-card {
+      background: linear-gradient(135deg, rgba(79,107,255,0.12) 0%, rgba(124,77,255,0.08) 100%);
+      border: 1px solid rgba(79,107,255,0.2);
+      border-radius: 20px;
+      padding: 4rem 3rem;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .download-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse 60% 50% at 50% 0%, rgba(79,107,255,0.15) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .download-title {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: clamp(1.8rem, 3.5vw, 2.8rem);
+      letter-spacing: -0.03em;
+      margin-bottom: 1rem;
+    }
+    .download-desc {
+      font-size: 1rem;
+      color: var(--muted);
+      margin-bottom: 2.5rem;
+      line-height: 1.7;
+      max-width: 500px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .download-actions { display: flex; justify-content: center; gap: 1rem; flex-wrap: wrap; }
+    .platform-badges {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 1.5rem;
+      margin-top: 2rem;
+      flex-wrap: wrap;
+    }
+    .platform-badge {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+    .platform-badge svg { opacity: 0.5; }
+
+    /* ── Footer ───────────────────────────────── */
+    footer {
+      position: relative;
+      z-index: 1;
+      border-top: 1px solid var(--border);
+      padding: 2.5rem 0;
+    }
+    .footer-inner {
+      max-width: 1140px;
+      margin: 0 auto;
+      padding: 0 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+    .footer-logo {
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: 0.95rem;
+      color: var(--muted);
+      text-decoration: none;
+    }
+    .footer-logo span { color: var(--accent); }
+    .footer-copy { font-size: 0.78rem; color: var(--muted); }
+    .footer-links { display: flex; gap: 1.5rem; }
+    .footer-links a { font-size: 0.78rem; color: var(--muted); text-decoration: none; transition: color 0.2s; }
+    .footer-links a:hover { color: var(--text); }
+
+    /* ── Reveal animations ────────────────────── */
+    .reveal {
+      opacity: 0;
+      transform: translateY(28px);
+      transition: opacity 0.6s ease, transform 0.6s ease;
+    }
+    .reveal.visible {
+      opacity: 1;
+      transform: none;
+    }
+
+    /* ── Responsive ───────────────────────────── */
+    @media (max-width: 900px) {
+      .demo-grid      { grid-template-columns: 1fr; }
+      .features-grid  { grid-template-columns: repeat(2, 1fr); }
+      .steps-grid     { grid-template-columns: 1fr; gap: 1rem; }
+      .step-connector { display: none; }
+      .cli-inner      { grid-template-columns: 1fr; gap: 2.5rem; }
+      nav .nav-links  { display: none; }
+    }
+    @media (max-width: 600px) {
+      .features-grid  { grid-template-columns: 1fr; }
+      .hero-meta      { gap: 1.5rem; }
+      .download-card  { padding: 2.5rem 1.5rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="bg-canvas">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+  </div>
+  <div class="grid-overlay"></div>
+
+  <!-- Nav -->
+  <nav>
+    <div class="nav-inner">
+      <a href="#" class="nav-logo">doc<span>2</span>md</a>
+      <ul class="nav-links">
+        <li><a href="#features">Features</a></li>
+        <li><a href="#how-it-works">How It Works</a></li>
+        <li><a href="#cli">CLI</a></li>
+        <li><a href="#download" class="nav-cta">Download</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="wrap">
+      <div class="hero-content">
+        <div class="hero-badge">Native macOS &amp; CLI</div>
+        <h1>Turn documents<br>into <span class="gradient-text">Markdown.</span></h1>
+        <p class="hero-sub">
+          Convert Word (.docx) and Excel (.xlsx) files to clean, structured Markdown — with images extracted, tables preserved, and sheets split. Fully offline. No cloud, no subscription.
+        </p>
+        <div class="hero-actions">
+          <a href="#download" class="btn-primary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download for macOS
+          </a>
+          <a href="#cli" class="btn-ghost">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+            View CLI docs
+          </a>
+        </div>
+        <div class="hero-meta">
+          <div class="meta-item">
+            <span class="meta-value">100%</span>
+            <span class="meta-label">Offline</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-value">0</span>
+            <span class="meta-label">Cloud uploads</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-value">Rust</span>
+            <span class="meta-label">Powered</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Demo -->
+  <section class="demo-section">
+    <div class="wrap">
+      <div class="demo-grid reveal">
+        <!-- Terminal -->
+        <div class="terminal-window">
+          <div class="terminal-bar">
+            <span class="dot dot-red"></span>
+            <span class="dot dot-yellow"></span>
+            <span class="dot dot-green"></span>
+            <span class="terminal-bar-title">zsh — doc2md</span>
+          </div>
+          <div class="terminal-body" id="terminal-body">
+            <div><span class="t-prompt">❯ </span><span class="t-cmd" id="term-line1"></span></div>
+            <div id="term-out1" style="display:none"><span class="t-out">Converting report.docx…</span></div>
+            <div id="term-out2" style="display:none"><span class="t-ok">✓ </span><span class="t-out">report.md written</span></div>
+            <div id="term-out3" style="display:none"><span class="t-ok">✓ </span><span class="t-out">3 images extracted → report_images/</span></div>
+            <div id="term-spacer" style="display:none"><br/></div>
+            <div id="term-line2-wrap" style="display:none">
+              <span class="t-prompt">❯ </span><span class="t-cmd" id="term-line2"></span>
+            </div>
+            <div id="term-out4" style="display:none"><span class="t-out">Scanning ./reports/ (12 files)…</span></div>
+            <div id="term-out5" style="display:none"><span class="t-ok">✓ </span><span class="t-out">12/12 converted in 0.8s</span></div>
+            <div id="term-cursor-wrap"><span class="cursor"></span></div>
+          </div>
+        </div>
+
+        <!-- GUI mockup -->
+        <div class="gui-window">
+          <div class="gui-bar">
+            <span class="dot dot-red"></span>
+            <span class="dot dot-yellow"></span>
+            <span class="dot dot-green"></span>
+            <span class="gui-bar-title">doc2md</span>
+          </div>
+          <div class="gui-body">
+            <div class="gui-drop-area">
+              <div class="gui-drop-icon">📄</div>
+              <div class="gui-drop-text">Drop .docx / .xlsx files here<br><span style="font-size:0.7rem;opacity:0.6;">or click to browse</span></div>
+            </div>
+            <div class="gui-file-list">
+              <div class="gui-file-item">
+                <span class="gui-file-icon">📝</span>
+                <span class="gui-file-name">annual_report.docx</span>
+                <span class="gui-file-size">2.1 MB</span>
+                <span class="gui-file-status">✓ Done</span>
+              </div>
+              <div class="gui-file-item">
+                <span class="gui-file-icon">📊</span>
+                <span class="gui-file-name">sales_data.xlsx</span>
+                <span class="gui-file-size">540 KB</span>
+                <span class="gui-file-status">✓ Done</span>
+              </div>
+              <div class="gui-file-item">
+                <span class="gui-file-icon">📝</span>
+                <span class="gui-file-name">meeting_notes.docx</span>
+                <span class="gui-file-size">88 KB</span>
+                <span class="gui-file-status" style="color:var(--accent);">⟳ Converting</span>
+              </div>
+            </div>
+            <button class="gui-convert-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 12 12 5 19 12"/></svg>
+              Convert All
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section class="features-section" id="features">
+    <div class="wrap">
+      <div class="section-head center reveal">
+        <span class="section-label">Features</span>
+        <h2 class="section-title">Everything you need,<br>nothing you don't.</h2>
+        <p class="section-desc">doc2md handles the messy parts of document conversion so you get clean, portable Markdown every time.</p>
+      </div>
+      <div class="features-grid reveal">
+        <div class="feature-card">
+          <span class="feature-icon">🖥️</span>
+          <div class="feature-title">Native macOS App</div>
+          <p class="feature-desc">Drag-and-drop GUI built with Tauri. Lightweight, fast, and feels at home on macOS — no Electron bloat.</p>
+        </div>
+        <div class="feature-card">
+          <span class="feature-icon">⌨️</span>
+          <div class="feature-title">Powerful CLI</div>
+          <p class="feature-desc">Integrate into scripts, CI pipelines, or any workflow. One command converts a single file or an entire folder.</p>
+        </div>
+        <div class="feature-card">
+          <span class="feature-icon">📁</span>
+          <div class="feature-title">Batch Processing</div>
+          <p class="feature-desc">Convert dozens of documents at once. The app queues files automatically and shows per-file progress.</p>
+        </div>
+        <div class="feature-card">
+          <span class="feature-icon">🖼️</span>
+          <div class="feature-title">Image Extraction</div>
+          <p class="feature-desc">Embedded images are extracted and saved alongside the Markdown, with correct relative links in the output.</p>
+        </div>
+        <div class="feature-card">
+          <span class="feature-icon">📊</span>
+          <div class="feature-title">Excel Sheet Split</div>
+          <p class="feature-desc">Multi-sheet workbooks are split into one Markdown file per sheet, keeping tables readable and structured.</p>
+        </div>
+        <div class="feature-card">
+          <span class="feature-icon">🔒</span>
+          <div class="feature-title">Fully Offline</div>
+          <p class="feature-desc">No internet connection required. Your documents never leave your machine — complete privacy by design.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- How It Works -->
+  <section class="how-section" id="how-it-works">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <span class="section-label">How it works</span>
+        <h2 class="section-title">Three steps to clean Markdown.</h2>
+        <p class="section-desc">No setup, no accounts, no configuration files. Open the app and start converting.</p>
+      </div>
+      <div class="steps-grid reveal">
+        <div class="step-card">
+          <div class="step-num">01</div>
+          <div class="step-title">Drop your files</div>
+          <p class="step-desc">Drag .docx or .xlsx files into the app, or browse for them. You can also point the CLI at a folder for bulk conversion.</p>
+          <span class="step-connector">→</span>
+        </div>
+        <div class="step-card">
+          <div class="step-num">02</div>
+          <div class="step-title">Hit convert</div>
+          <p class="step-desc">Choose your output directory and click Convert. The Rust core processes each file in milliseconds, extracting text, tables, and images.</p>
+          <span class="step-connector">→</span>
+        </div>
+        <div class="step-card">
+          <div class="step-num">03</div>
+          <div class="step-title">Get clean Markdown</div>
+          <p class="step-desc">Your .md files are ready. Headings, lists, code blocks, tables, and image references — all faithfully converted.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CLI Section -->
+  <section class="cli-section" id="cli">
+    <div class="wrap">
+      <div class="cli-inner">
+        <div class="reveal">
+          <span class="section-label">CLI</span>
+          <h2 class="section-title">Built for scripts<br>and pipelines.</h2>
+          <p class="section-desc" style="margin-bottom:0;">The <code style="font-family:'JetBrains Mono',monospace;font-size:0.85em;color:var(--accent3)">doc2md</code> CLI is installed automatically when you first launch the macOS app. Use it everywhere.</p>
+          <div class="cli-feature-list">
+            <div class="cli-feature-item">
+              <span class="cli-feature-check">✓</span>
+              <span class="cli-feature-text"><strong>Single file or folder</strong> <span>— convert one document or an entire directory tree</span></span>
+            </div>
+            <div class="cli-feature-item">
+              <span class="cli-feature-check">✓</span>
+              <span class="cli-feature-text"><strong>Configurable output path</strong> <span>— write alongside source or to a specified destination</span></span>
+            </div>
+            <div class="cli-feature-item">
+              <span class="cli-feature-check">✓</span>
+              <span class="cli-feature-text"><strong>CI-friendly exit codes</strong> <span>— exits 0 on success, non-zero on any failure</span></span>
+            </div>
+            <div class="cli-feature-item">
+              <span class="cli-feature-check">✓</span>
+              <span class="cli-feature-text"><strong>Auto-installed with the app</strong> <span>— no separate package manager needed</span></span>
+            </div>
+          </div>
+        </div>
+        <div class="cli-code-block reveal">
+          <div class="cli-code-bar">
+            <span class="dot dot-red"></span>
+            <span class="dot dot-yellow"></span>
+            <span class="dot dot-green"></span>
+            <span class="cli-code-lang">shell</span>
+          </div>
+          <div class="cli-code-body">
+<span class="code-comment"># Convert a single file</span>
+<br><span class="code-cmd">doc2md</span> <span class="code-path">report.docx</span>
+<br>
+<br><span class="code-comment"># Specify output directory</span>
+<br><span class="code-cmd">doc2md</span> <span class="code-path">report.docx</span> <span class="code-flag">-o</span> <span class="code-path">./output/</span>
+<br>
+<br><span class="code-comment"># Batch convert a folder</span>
+<br><span class="code-cmd">doc2md</span> <span class="code-path">./documents/</span>
+<br>
+<br><span class="code-comment"># Pipe into another tool</span>
+<br><span class="code-cmd">doc2md</span> <span class="code-path">notes.docx</span> <span class="code-flag">--stdout</span> <span class="code-arg">| pandoc -o notes.html</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Download -->
+  <section class="download-section" id="download">
+    <div class="wrap">
+      <div class="download-card reveal">
+        <h2 class="download-title">Ready to convert?</h2>
+        <p class="download-desc">Download the macOS app for free. The CLI installs automatically on first launch.</p>
+        <div class="download-actions">
+          <a href="#" class="btn-primary" style="font-size:1rem;padding:0.9rem 2.2rem;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download for macOS
+          </a>
+        </div>
+        <div class="platform-badges">
+          <span class="platform-badge">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+            macOS 12+
+          </span>
+          <span class="platform-badge">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            Apple Silicon &amp; Intel
+          </span>
+          <span class="platform-badge">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            No account needed
+          </span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="footer-inner">
+      <a href="#" class="footer-logo">doc<span>2</span>md</a>
+      <span class="footer-copy">© 2026 doc2md. Made with Rust &amp; Tauri.</span>
+      <div class="footer-links">
+        <a href="https://github.com" target="_blank" rel="noopener">GitHub</a>
+        <a href="#">Privacy</a>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // Scroll reveal
+    const observer = new IntersectionObserver(
+      entries => entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); observer.unobserve(e.target); } }),
+      { threshold: 0.12 }
+    );
+    document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+    // Terminal typewriter animation
+    const lines = [
+      { el: 'term-line1',      text: 'doc2md report.docx',            delay: 600,  perChar: 55 },
+      { el: 'term-out1',       show: true,                             delay: 1700 },
+      { el: 'term-out2',       show: true,                             delay: 1950 },
+      { el: 'term-out3',       show: true,                             delay: 2150 },
+      { el: 'term-spacer',     show: true,                             delay: 2400 },
+      { el: 'term-line2-wrap', show: true,                             delay: 2600 },
+      { el: 'term-line2',      text: 'doc2md ./reports/',              delay: 2700, perChar: 55 },
+      { el: 'term-out4',       show: true,                             delay: 3550 },
+      { el: 'term-out5',       show: true,                             delay: 3800 },
+    ];
+
+    function typeText(el, text, perChar, done) {
+      let i = 0;
+      function next() {
+        el.textContent = text.slice(0, ++i);
+        if (i < text.length) setTimeout(next, perChar);
+        else if (done) done();
+      }
+      next();
+    }
+
+    function runLine(index) {
+      if (index >= lines.length) return;
+      const cfg = lines[index];
+      const el  = document.getElementById(cfg.el);
+      if (!el) { runLine(index + 1); return; }
+
+      setTimeout(() => {
+        if (cfg.show) {
+          el.style.display = '';
+        }
+        if (cfg.text) {
+          typeText(el, cfg.text, cfg.perChar, () => runLine(index + 1));
+          return;
+        }
+        runLine(index + 1);
+      }, index === 0 ? cfg.delay : 0);
+    }
+
+    // Stagger each line by its delay from the previous
+    (function scheduleAll() {
+      let accumulated = 0;
+      lines.forEach((cfg, i) => {
+        accumulated += cfg.delay || 0;
+        const el = document.getElementById(cfg.el);
+        if (!el) return;
+        if (cfg.show && !cfg.text) {
+          setTimeout(() => { el.style.display = ''; }, accumulated);
+        } else if (cfg.text) {
+          setTimeout(() => {
+            typeText(el, cfg.text, cfg.perChar, null);
+          }, accumulated);
+          accumulated += cfg.text.length * cfg.perChar;
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
